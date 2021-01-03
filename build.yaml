@@ -1,0 +1,73 @@
+version: 0.2
+# Build
+phases:
+  pre_build:
+    commands:
+      - echo pre_build @1.
+      - echo 2020:12:22 152pm
+      - npm install -g typescript
+      - npm install -g aws-cdk
+      - npm install --global webpack
+      - aws --version
+      - cdk --version
+      - docker --version
+  build:
+    commands:
+      # Login to ECR.
+      - aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 778477161868.dkr.ecr.us-west-2.amazonaws.com
+
+      # Config CDK.
+      - cd rythm-svc-cdk
+      - npm install
+      - cdk list
+      - cdk synth --all
+
+      # Deploy core stack resources.
+      - cdk deploy "RythmSvcCdkStackCoreStackDC6ECDB4" --require-approval=never
+
+      # Deploy repos.
+      - cdk deploy "RythmSvcCdkStackEcrStack8BB0E4EE" --require-approval=never
+
+      # Build rythm-svc-price docker image and push.
+      - cd ..
+      - cd rythm-svc-price
+      - docker build -t rythm-svc-price .
+      - docker tag rythm-svc-price:latest 778477161868.dkr.ecr.us-west-2.amazonaws.com/rythm-svc-price:latest
+      - docker push 778477161868.dkr.ecr.us-west-2.amazonaws.com/rythm-svc-price:latest
+
+      # Build rythm-svc-price docker image and push.
+      - cd ..
+      - cd rythm-svc-socketio
+      - npm install
+      - tsc
+      - npm run build
+      - cp .env ./build/
+      - docker build -t rythm-svc-socketio .
+      - docker tag rythm-svc-socketio:latest 778477161868.dkr.ecr.us-west-2.amazonaws.com/rythm-svc-socketio:latest
+      - docker push 778477161868.dkr.ecr.us-west-2.amazonaws.com/rythm-svc-socketio:latest
+
+      # Run the cdk.
+      - cd ..
+      - cd rythm-svc-cdk
+      - cdk deploy "RythmSvcCdkStackPriceSvcStackC85535E7" --require-approval=never
+      - cdk deploy "RythmSvcCdkStackSocketioSvcStackEC817421" --require-approval=never
+
+      # Update the service.
+      - ecs_cluster=rythm-cluster
+      - ecs_service=rythm-socketio-service
+      - aws ecs update-service --desired-count 0 --cluster $ecs_cluster --service $ecs_service
+      - aws ecs wait services-stable --cluster $ecs_cluster --services $ecs_service
+      - aws ecs update-service --desired-count 1 --cluster $ecs_cluster --service $ecs_service --force-new-deployment
+      - ecs_service=rythm-price-service
+      - aws ecs update-service --desired-count 0 --cluster $ecs_cluster --service $ecs_service
+      - aws ecs wait services-stable --cluster $ecs_cluster --services $ecs_service
+      - aws ecs update-service --desired-count 1 --cluster $ecs_cluster --service $ecs_service --force-new-deployment
+
+      # website
+      - cdk deploy "RythmSvcCdkStackWebsiteStackE33FD23E" --require-approval=never
+      - cd ../rythm-svc-app
+      - npm run build
+      - aws s3 sync build s3://origin.rythm.cc --acl public-read
+  post_build:
+    commands:
+      - echo post_build
