@@ -30,7 +30,7 @@ export class PipelineStack extends cdk.Stack {
     const sourceAction = new codepipeline_actions.GitHubSourceAction({
       actionName: "github-source",
       owner: "brandonvio",
-      repo: "rythm-micro-serv",
+      repo: "rythm-core-cdk",
       oauthToken: cdk.SecretValue.secretsManager("brandonvio-github-auth-token"),
       output: sourceOutput,
       branch: "main", // default: 'master'
@@ -42,7 +42,7 @@ export class PipelineStack extends cdk.Stack {
     });
 
     const buildMicroServProject = new codebuild.PipelineProject(this, "BuildMicroServProject", {
-      projectName: "rythm-price-micro-serv-proj",
+      projectName: "rythm-core-proj",
       buildSpec: codebuild.BuildSpec.fromSourceFilename("build.yaml"),
       role: buildRole,
       environment: {
